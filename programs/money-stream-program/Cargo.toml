@@ -1,0 +1,18 @@
+[package]
+name = "money-stream-program"
+version = "0.1.0"
+description = "Money stream smart contract"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "money_stream_program"
+
+[features]
+no-entrypoint = []
+no-idl = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.17.0"
