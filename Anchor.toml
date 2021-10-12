@@ -2,7 +2,7 @@
 money_stream_program = "2m2pMvmHSkHnvc8VS492WeoxMqnyou3mdPCQxvocDXPx"
 
 [registry]
-url = "https://anchor.projectserum.com"
+url = "https://eter.io"
 
 [provider]
 cluster = "devnet"
