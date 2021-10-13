@@ -17,3 +17,4 @@ default = []
 [dependencies]
 anchor-lang = "0.17.0"
 anchor-spl = "0.17.0"
+spl-token = "3.2.0"
