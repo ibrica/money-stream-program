@@ -141,14 +141,17 @@ pub mod money_stream_program {
        Ok(())
     }
 
+    // Another moment passed, increment step (more money to taker)
+    pub fn tick(ctx: Context<Tick>) -> ProgramResult {
+        ctx.accounts.escrow_account.step = ctx.accounts.escrow_account.step + 1;
+        Ok(())
+    }
+
     // Check the balance from taker side
     pub fn balance(_ctx: Context<Balance>) -> ProgramResult {
         Ok(())
     }
 }
-
-
-
 
 #[derive(Accounts)]
 #[instruction(vault_account_bump: u8, initializer_amount: u64)]
