@@ -94,7 +94,7 @@ describe("money-stream-program", () => {
       program.programId
     );
     vault_authority_pda = _vault_authority_pda;
-/*
+
     await program.rpc.initializeEscrow(
       vault_account_bump,
       new anchor.BN(60),
@@ -136,10 +136,33 @@ describe("money-stream-program", () => {
     assert.ok(
       _escrowAccount.initializerTokenAccount.equals(initializerTokenAccount)
     );
-    */
+    
    assert(true)
 
   }).timeout(5000);
+
+  it("Check balance", async () => {
+    await program.rpc.balance({
+      accounts: {
+        taker: takerMainAccount.publicKey,
+        initializer: initializerMainAccount.publicKey,
+        takerTokenAccount: takerTokenAccount,
+        escrowAccount: escrowAccount.publicKey,
+      },
+      signers: [takerMainAccount]
+    });
+
+    let _escrowAccount = await program.account.escrowAccount.fetch(
+      escrowAccount.publicKey
+    );
+
+    // Check that the values in the escrow account match what taker expects.
+    assert.ok(_escrowAccount.initializerKey.equals(initializerMainAccount.publicKey));
+    assert.ok(_escrowAccount.limit.toNumber() == 60);
+    assert.ok(_escrowAccount.step.toNumber() == 1);
+    assert.ok(_escrowAccount.rate.toNumber() == 10);
+  }).timeout(5000);
+
 
   it("Withdraw escrow", async () => {
     await program.rpc.withdraw({
@@ -166,9 +189,10 @@ describe("money-stream-program", () => {
 
   }).timeout(5000);
 
+
   it("Initialize escrow and cancel escrow", async () => {
     // Init
-    /*
+
     await program.rpc.initializeEscrow(
       vault_account_bump,
       new anchor.BN(60),
@@ -192,9 +216,6 @@ describe("money-stream-program", () => {
       }
     );
    
-    */
-    console.log("Init done");
-
     // Cancel the escrow.
     await program.rpc.cancelEscrow({
       accounts: {
@@ -212,13 +233,14 @@ describe("money-stream-program", () => {
     // TODO: Assert if the PDA token account is closed
 
     // Check the final owner should be the provider public key.
-    _initializerTokenAccountA = await mint.getAccountInfo(initializerTokenAccountA);
-    assert.ok(_initializerTokenAccountA.owner.equals(initializerMainAccount.publicKey));
+    _initializerTokenAccount = await mint.getAccountInfo(initializerTokenAccount);
+    _takerTokenAccount = await mint.getAccountInfo(takerTokenAccount);
+    assert.ok(_initializerTokenAccount.owner.equals(initializerMainAccount.publicKey));
 
     // Check cancel funds.
-    assert.ok(_takerTokenAccount.amount.toNumber() == 10);
-    assert.ok(_initializerTokenAccount.amount.toNumber() == 90);
+    assert.ok(_takerTokenAccount.amount.toNumber() == 20);
+    assert.ok(_initializerTokenAccount.amount.toNumber() == 80);
 
 
-  }).timeout(5000);
+  }).timeout(10000);
 });

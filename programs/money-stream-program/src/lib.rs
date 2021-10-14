@@ -140,7 +140,15 @@ pub mod money_stream_program {
 
        Ok(())
     }
+
+    // Check the balance from taker side
+    pub fn balance(_ctx: Context<Balance>) -> ProgramResult {
+        Ok(())
+    }
 }
+
+
+
 
 #[derive(Accounts)]
 #[instruction(vault_account_bump: u8, initializer_amount: u64)]
@@ -166,6 +174,29 @@ pub struct InitializeEscrow<'info> {
     pub system_program: AccountInfo<'info>,
     pub rent: Sysvar<'info, Rent>,
     pub token_program: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Balance<'info> {
+    #[account(signer)]
+    pub taker: AccountInfo<'info>,
+    #[account(mut)]
+    pub initializer: AccountInfo<'info>,
+    #[account(
+        constraint = escrow_account.initializer_key == *initializer.key
+    )]
+    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+}
+
+#[derive(Accounts)]
+pub struct Tick<'info> {
+    #[account(mut, signer)]
+    pub initializer: AccountInfo<'info>,
+    #[account(
+        mut,
+        constraint = escrow_account.initializer_key == *initializer.key
+    )]
+    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
 }
 
 #[derive(Accounts)]
@@ -289,7 +320,7 @@ impl<'info> Withdraw<'info> {
                 .initializer_token_account
                 .to_account_info()
                 .clone(),
-            authority: self.taker.clone(),
+            authority: self.vault_authority.clone(),
         };
         CpiContext::new(self.token_program.clone(), cpi_accounts)
     }
