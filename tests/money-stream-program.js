@@ -18,14 +18,14 @@ describe("money-stream-program", () => {
   let vault_account_bump = null;
   let vault_authority_pda = null;
  
-  const escrowAccount = anchor.web3.Keypair.generate();
+  const streamAccount = anchor.web3.Keypair.generate();
   const payer = anchor.web3.Keypair.generate();
   const mintAuthority = anchor.web3.Keypair.generate();
   const initializerMainAccount = anchor.web3.Keypair.generate();
   const takerMainAccount = anchor.web3.Keypair.generate();
   let mintAmount = 100; // mint new tokens
 
-  it("Initialise escrow state", async () => {
+  it("Initialise stream state", async () => {
     // Airdropping tokens to a payer.
     await provider.connection.confirmTransaction(
       await provider.connection.requestAirdrop(payer.publicKey, 5000000000), //Devnet limit
@@ -81,7 +81,7 @@ describe("money-stream-program", () => {
     assert.ok(_takerTokenAccount.amount.toNumber() == 0);
   }).timeout(20000);
 
-  it("Initialize escrow", async () => {
+  it("Initialize stream", async () => {
     const [_vault_account_pda, _vault_account_bump] = await PublicKey.findProgramAddress(
       [Buffer.from(anchor.utils.bytes.utf8.encode("token-seed"))],
       program.programId
@@ -90,12 +90,12 @@ describe("money-stream-program", () => {
     vault_account_bump = _vault_account_bump;
 
     const [_vault_authority_pda, _vault_authority_bump] = await PublicKey.findProgramAddress(
-      [Buffer.from(anchor.utils.bytes.utf8.encode("escrow"))],
+      [Buffer.from(anchor.utils.bytes.utf8.encode("streaming"))],
       program.programId
     );
     vault_authority_pda = _vault_authority_pda;
 
-    await program.rpc.initializeEscrow(
+    await program.rpc.initializeStream(
       vault_account_bump,
       new anchor.BN(60),
       new anchor.BN(1),
@@ -106,35 +106,35 @@ describe("money-stream-program", () => {
           vaultAccount: vault_account_pda,
           mint: mint.publicKey,
           initializerTokenAccount: initializerTokenAccount,
-          escrowAccount: escrowAccount.publicKey,
+          streamAccount: streamAccount.publicKey,
           systemProgram: anchor.web3.SystemProgram.programId,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           tokenProgram: TOKEN_PROGRAM_ID,
         },
         instructions: [
-          await program.account.escrowAccount.createInstruction(escrowAccount),
+          await program.account.streamAccount.createInstruction(streamAccount),
         ],
-        signers: [escrowAccount, initializerMainAccount],
+        signers: [streamAccount, initializerMainAccount],
       }
     );
 
     let _vault = await mint.getAccountInfo(vault_account_pda);
 
-    let _escrowAccount = await program.account.escrowAccount.fetch(
-      escrowAccount.publicKey
+    let _streamAccount = await program.account.streamAccount.fetch(
+      streamAccount.publicKey
     );
 
     // Check that the new owner is the PDA.
     assert.ok(_vault.owner.equals(vault_authority_pda));
 
-    // Check that the values in the escrow account match what we expect.
-    assert.ok(_escrowAccount.initializerKey.equals(initializerMainAccount.publicKey));
-    assert.ok(_escrowAccount.limit.toNumber() == 60);
-    assert.ok(_escrowAccount.step.toNumber() == 1);
-    assert.ok(_escrowAccount.rate.toNumber() == 10);
+    // Check that the values in the stream account match what we expect.
+    assert.ok(_streamAccount.initializerKey.equals(initializerMainAccount.publicKey));
+    assert.ok(_streamAccount.limit.toNumber() == 60);
+    assert.ok(_streamAccount.step.toNumber() == 1);
+    assert.ok(_streamAccount.rate.toNumber() == 10);
 
     assert.ok(
-      _escrowAccount.initializerTokenAccount.equals(initializerTokenAccount)
+      _streamAccount.initializerTokenAccount.equals(initializerTokenAccount)
     );
     
    assert(true)
@@ -145,20 +145,20 @@ describe("money-stream-program", () => {
     await program.rpc.tick({
       accounts: {
         initializer: initializerMainAccount.publicKey,
-        escrowAccount: escrowAccount.publicKey,
+        streamAccount: streamAccount.publicKey,
       },
       signers: [initializerMainAccount]
     });
 
-    let _escrowAccount = await program.account.escrowAccount.fetch(
-      escrowAccount.publicKey
+    let _streamAccount = await program.account.streamAccount.fetch(
+      streamAccount.publicKey
     );
 
-    // Check that the values in the escrow account match after tick
-    assert.ok(_escrowAccount.initializerKey.equals(initializerMainAccount.publicKey));
-    assert.ok(_escrowAccount.limit.toNumber() == 60);
-    assert.ok(_escrowAccount.step.toNumber() == 2);
-    assert.ok(_escrowAccount.rate.toNumber() == 10);
+    // Check that the values in the stream account match after tick
+    assert.ok(_streamAccount.initializerKey.equals(initializerMainAccount.publicKey));
+    assert.ok(_streamAccount.limit.toNumber() == 60);
+    assert.ok(_streamAccount.step.toNumber() == 2);
+    assert.ok(_streamAccount.rate.toNumber() == 10);
   }).timeout(5000);
 
   it("Check balance", async () => {
@@ -167,31 +167,31 @@ describe("money-stream-program", () => {
         taker: takerMainAccount.publicKey,
         initializer: initializerMainAccount.publicKey,
         takerTokenAccount: takerTokenAccount,
-        escrowAccount: escrowAccount.publicKey,
+        streamAccount: streamAccount.publicKey,
       },
       signers: [takerMainAccount]
     });
 
-    let _escrowAccount = await program.account.escrowAccount.fetch(
-      escrowAccount.publicKey
+    let _streamAccount = await program.account.streamAccount.fetch(
+      streamAccount.publicKey
     );
 
-    // Check that the values in the escrow account match what taker expects.
-    assert.ok(_escrowAccount.initializerKey.equals(initializerMainAccount.publicKey));
-    assert.ok(_escrowAccount.limit.toNumber() == 60);
-    assert.ok(_escrowAccount.step.toNumber() == 2);
-    assert.ok(_escrowAccount.rate.toNumber() == 10);
+    // Check that the values in the stream account match what taker expects.
+    assert.ok(_streamAccount.initializerKey.equals(initializerMainAccount.publicKey));
+    assert.ok(_streamAccount.limit.toNumber() == 60);
+    assert.ok(_streamAccount.step.toNumber() == 2);
+    assert.ok(_streamAccount.rate.toNumber() == 10);
   }).timeout(5000);
 
 
-  it("Withdraw escrow", async () => {
+  it("Withdraw stream", async () => {
     await program.rpc.withdraw({
       accounts: {
         taker: takerMainAccount.publicKey,
         initializer: initializerMainAccount.publicKey,
         takerTokenAccount: takerTokenAccount,
         initializerTokenAccount: initializerTokenAccount,
-        escrowAccount: escrowAccount.publicKey,
+        streamAccount: streamAccount.publicKey,
         vaultAccount: vault_account_pda,
         vaultAuthority: vault_authority_pda,
         tokenProgram: TOKEN_PROGRAM_ID,
@@ -210,10 +210,10 @@ describe("money-stream-program", () => {
   }).timeout(5000);
 
 
-  it("Initialize escrow and cancel escrow", async () => {
+  it("Initialize stream and cancel stream", async () => {
     // Init
 
-    await program.rpc.initializeEscrow(
+    await program.rpc.initializeStream(
       vault_account_bump,
       new anchor.BN(60),
       new anchor.BN(1),
@@ -224,27 +224,27 @@ describe("money-stream-program", () => {
           vaultAccount: vault_account_pda,
           mint: mint.publicKey,
           initializerTokenAccount: initializerTokenAccount,
-          escrowAccount: escrowAccount.publicKey,
+          streamAccount: streamAccount.publicKey,
           systemProgram: anchor.web3.SystemProgram.programId,
           rent: anchor.web3.SYSVAR_RENT_PUBKEY,
           tokenProgram: TOKEN_PROGRAM_ID,
         },
         instructions: [
-          await program.account.escrowAccount.createInstruction(escrowAccount),
+          await program.account.streamAccount.createInstruction(streamAccount),
         ],
-        signers: [escrowAccount, initializerMainAccount],
+        signers: [streamAccount, initializerMainAccount],
       }
     );
    
-    // Cancel the escrow.
-    await program.rpc.cancelEscrow({
+    // Cancel the stream.
+    await program.rpc.cancelStream({
       accounts: {
         initializer: initializerMainAccount.publicKey,
         takerTokenAccount: takerTokenAccount,
         initializerTokenAccount: initializerTokenAccount,
         vaultAccount: vault_account_pda,
         vaultAuthority: vault_authority_pda,
-        escrowAccount: escrowAccount.publicKey,
+        streamAccount: streamAccount.publicKey,
         tokenProgram: TOKEN_PROGRAM_ID,
       },
       signers: [initializerMainAccount]

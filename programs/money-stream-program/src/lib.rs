@@ -1,19 +1,16 @@
-//! An example of an escrow program, inspired by PaulX tutorial seen here
-//! https://paulx.dev/blog/2021/01/14/programming-on-solana-an-introduction/
-//! This example has some changes to implementation, but more or less should be the same overall
-//! Also gives examples on how to use some newer anchor features and CPI
+//! Money stream program, paying over time (transfer tokens from one account to another)
+//! Following escrow approach from
+//! https://hackmd.io/@ironaddicteddog/anchor_example_escrow and
+//! https://github.com/project-serum/anchor/tree/master/tests/escrow
+//! 
 //!
-//! User (Initializer) constructs an escrow deal:
-//! - SPL token (X) they will offer and amount
-//! - SPL token (Y) count they want in return and amount
-//! - Program will take ownership of initializer's token X account
-//!
-//! Once this escrow is initialised, either:
-//! 1. User (Taker) can call the withdraw function to withdraw their Y for X
-//! - This will close the escrow account and no longer be usable
-//! OR
-//! 2. If no one has withdrawd, the initializer can close the escrow account
-//! - Initializer will get back ownership of their token X account
+//! User (Initializer I) starts a token stream with Taker(T):
+//! - SPL tokens will be sent to a vault from I
+//! - Initializer will send ticks over time and increment steps
+//! - T can check the balance of the stream
+//! - I can cancel stream, vault is closed and tokens flow to the T, rest amount is returned to T
+//! - T can withdraw tokens, stream is ended in same way like with cancel
+
 
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, CloseAccount, Mint, SetAuthority, TokenAccount, Transfer};
@@ -25,10 +22,10 @@ declare_id!("5xCzmy6UvLQJX7GBckN4q5EaC4ypsLhAhM9jhdfKXBR1");
 pub mod money_stream_program {
     use super::*;
 
-    const ESCROW_PDA_SEED: &[u8] = b"escrow";
+    const ESCROW_PDA_SEED: &[u8] = b"streaming";
 
-    pub fn initialize_escrow(
-        ctx: Context<InitializeEscrow>,
+    pub fn initialize_stream(
+        ctx: Context<InitializeStream>,
         _vault_account_bump: u8,
         limit: u64,
         step: u64,
@@ -37,18 +34,18 @@ pub mod money_stream_program {
         if limit < step { // Not enough money
             return Err(ErrorCode::LimitLow.into());
         }
-        ctx.accounts.escrow_account.initializer_key = *ctx.accounts.initializer.key;
+        ctx.accounts.stream_account.initializer_key = *ctx.accounts.initializer.key;
         ctx.accounts
-            .escrow_account
+            .stream_account
             .initializer_token_account = *ctx
             .accounts
             .initializer_token_account
             .to_account_info()
             .key;
 
-        ctx.accounts.escrow_account.limit = limit;
-        ctx.accounts.escrow_account.step = step;
-        ctx.accounts.escrow_account.rate = rate;
+        ctx.accounts.stream_account.limit = limit;
+        ctx.accounts.stream_account.step = step;
+        ctx.accounts.stream_account.rate = rate;
 
         let (vault_authority, _vault_authority_bump) =
             Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
@@ -61,21 +58,21 @@ pub mod money_stream_program {
 
         token::transfer(
             ctx.accounts.into_transfer_to_pda_context(),
-            ctx.accounts.escrow_account.limit,
+            ctx.accounts.stream_account.limit,
         )?;
 
         Ok(())
     }
 
-    pub fn cancel_escrow(ctx: Context<CancelEscrow>) -> ProgramResult {
+    pub fn cancel_stream(ctx: Context<CancelStream>) -> ProgramResult {
         let (_vault_authority, vault_authority_bump) =
             Pubkey::find_program_address(&[ESCROW_PDA_SEED], ctx.program_id);
         let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
 
         // Calculate amount for taker (rate * step)
-        let amount = ctx.accounts.escrow_account.rate * ctx.accounts.escrow_account.step;
+        let amount = ctx.accounts.stream_account.rate * ctx.accounts.stream_account.step;
         // Return rest to the initializer
-        let rest = ctx.accounts.escrow_account.limit - amount;
+        let rest = ctx.accounts.stream_account.limit - amount;
         
         // Send to taker
         token::transfer(
@@ -111,9 +108,9 @@ pub mod money_stream_program {
         let authority_seeds = &[&ESCROW_PDA_SEED[..], &[vault_authority_bump]];
 
        // Calculate amount for taker (rate * step)
-       let amount = ctx.accounts.escrow_account.rate * ctx.accounts.escrow_account.step;
+       let amount = ctx.accounts.stream_account.rate * ctx.accounts.stream_account.step;
        // Return rest to the initializer
-       let rest = ctx.accounts.escrow_account.limit - amount;
+       let rest = ctx.accounts.stream_account.limit - amount;
        
        // Send to taker
        token::transfer(
@@ -143,7 +140,7 @@ pub mod money_stream_program {
 
     // Another moment passed, increment step (more money to taker)
     pub fn tick(ctx: Context<Tick>) -> ProgramResult {
-        ctx.accounts.escrow_account.step = ctx.accounts.escrow_account.step + 1;
+        ctx.accounts.stream_account.step = ctx.accounts.stream_account.step + 1;
         Ok(())
     }
 
@@ -155,7 +152,7 @@ pub mod money_stream_program {
 
 #[derive(Accounts)]
 #[instruction(vault_account_bump: u8, initializer_amount: u64)]
-pub struct InitializeEscrow<'info> {
+pub struct InitializeStream<'info> {
     #[account(mut, signer)]
     pub initializer: AccountInfo<'info>,
     pub mint: Account<'info, Mint>,
@@ -173,7 +170,7 @@ pub struct InitializeEscrow<'info> {
     )]
     pub initializer_token_account: Account<'info, TokenAccount>,
     #[account(zero)]
-    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+    pub stream_account: ProgramAccount<'info, StreamAccount>,
     pub system_program: AccountInfo<'info>,
     pub rent: Sysvar<'info, Rent>,
     pub token_program: AccountInfo<'info>,
@@ -186,9 +183,9 @@ pub struct Balance<'info> {
     #[account(mut)]
     pub initializer: AccountInfo<'info>,
     #[account(
-        constraint = escrow_account.initializer_key == *initializer.key
+        constraint = stream_account.initializer_key == *initializer.key
     )]
-    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+    pub stream_account: ProgramAccount<'info, StreamAccount>,
 }
 
 #[derive(Accounts)]
@@ -197,13 +194,13 @@ pub struct Tick<'info> {
     pub initializer: AccountInfo<'info>,
     #[account(
         mut,
-        constraint = escrow_account.initializer_key == *initializer.key
+        constraint = stream_account.initializer_key == *initializer.key
     )]
-    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+    pub stream_account: ProgramAccount<'info, StreamAccount>,
 }
 
 #[derive(Accounts)]
-pub struct CancelEscrow<'info> {
+pub struct CancelStream<'info> {
     #[account(mut, signer)]
     pub initializer: AccountInfo<'info>,
     #[account(mut)]
@@ -215,11 +212,11 @@ pub struct CancelEscrow<'info> {
     pub initializer_token_account: Account<'info, TokenAccount>,
     #[account(
         mut,
-        constraint = escrow_account.initializer_key == *initializer.key,
-        constraint = escrow_account.initializer_token_account == *initializer_token_account.to_account_info().key,
+        constraint = stream_account.initializer_key == *initializer.key,
+        constraint = stream_account.initializer_token_account == *initializer_token_account.to_account_info().key,
         close = initializer
     )]
-    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+    pub stream_account: ProgramAccount<'info, StreamAccount>,
     pub token_program: AccountInfo<'info>,
 }
 
@@ -235,12 +232,12 @@ pub struct Withdraw<'info> {
     pub initializer_token_account: Account<'info, TokenAccount>,
     #[account(
         mut,
-        constraint = (escrow_account.step * escrow_account.rate)  <= escrow_account.limit,
-        constraint = escrow_account.initializer_token_account == *initializer_token_account.to_account_info().key,
-        constraint = escrow_account.initializer_key == *initializer.key,
+        constraint = (stream_account.step * stream_account.rate)  <= stream_account.limit,
+        constraint = stream_account.initializer_token_account == *initializer_token_account.to_account_info().key,
+        constraint = stream_account.initializer_key == *initializer.key,
         close = initializer
     )]
-    pub escrow_account: ProgramAccount<'info, EscrowAccount>,
+    pub stream_account: ProgramAccount<'info, StreamAccount>,
     #[account(mut)]
     pub vault_account: Account<'info, TokenAccount>,
     pub vault_authority: AccountInfo<'info>,
@@ -248,7 +245,7 @@ pub struct Withdraw<'info> {
 }
 
 #[account]
-pub struct EscrowAccount {
+pub struct StreamAccount {
     pub initializer_key: Pubkey,
     pub initializer_token_account: Pubkey,
     pub limit: u64,
@@ -256,7 +253,7 @@ pub struct EscrowAccount {
     pub rate: u64
 }
 
-impl<'info> InitializeEscrow<'info> {
+impl<'info> InitializeStream<'info> {
     fn into_transfer_to_pda_context(&self) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
         let cpi_accounts = Transfer {
             from: self
@@ -279,7 +276,7 @@ impl<'info> InitializeEscrow<'info> {
     }
 }
 
-impl<'info> CancelEscrow<'info> {
+impl<'info> CancelStream<'info> {
     fn into_transfer_to_initializer_context(
         &self,
     ) -> CpiContext<'_, '_, '_, 'info, Transfer<'info>> {
