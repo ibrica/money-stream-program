@@ -16,7 +16,7 @@ There is also a demonstration of the web3 solution for connection to the dApp in
 
 ### Demo
 
-See [here](https://youtube/) for a demo and walkthrough.
+See [here](https://www.youtube.com/watch?v=YXE9aAuJTCA) for a demo and walkthrough.
 
 
 ## Motivation
